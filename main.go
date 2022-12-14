@@ -8,13 +8,9 @@ import (
 	"os"
 	"os/signal"
 
-	dht "github.com/libp2p/go-libp2p-kad-dht"
-
 	"github.com/libp2p/go-libp2p"
-	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/libp2p/go-libp2p/core/routing"
 )
 
 const echoProtocol = "/echo/1.0.0"
@@ -41,34 +37,36 @@ func main() {
 		// libp2p.ResourceManager(r),
 		// libp2p.Peerstore(peers),
 		libp2p.NATPortMap(),
-		libp2p.Routing(func(node host.Host) (routing.PeerRouting, error) {
-			r, err := dht.New(
-				ctx, node,
-				// dht.BootstrapPeers(dht.GetDefaultBootstrapPeerAddrInfos()...),
-			)
-			if err != nil {
-				return nil, err
-			}
 
-			if err := r.Bootstrap(ctx); err != nil {
-				return nil, err
-			}
+		// 		libp2p.Routing(func(node host.Host) (routing.PeerRouting, error) {
+		// 			r, err := dht.New(
+		// 				ctx, node,
+		// 				// dht.BootstrapPeers(dht.GetDefaultBootstrapPeerAddrInfos()...),
+		// 			)
+		// 			if err != nil {
+		// 				return nil, err
+		// 			}
 
-			for i, p := range dht.GetDefaultBootstrapPeerAddrInfos() {
-				if err := node.Connect(ctx, p); err != nil {
-					fmt.Printf("failed to connect to bootstrap node #%v\n", i)
-				} else {
-					fmt.Println("connected to bootstrap node")
-				}
-			}
-			fmt.Println("done with bootstrapping")
+		// 			if err := r.Bootstrap(ctx); err != nil {
+		// 				return nil, err
+		// 			}
 
-			// err = r.Bootstrap(ctx)
-			// if err == nil {
-			// err = <-r.ForceRefresh()
-			// }
-			return r, nil
-		}),
+		// 			for i, p := range dht.GetDefaultBootstrapPeerAddrInfos() {
+		// 				if err := node.Connect(ctx, p); err != nil {
+		// 					fmt.Printf("failed to connect to bootstrap node #%v\n", i)
+		// 				} else {
+		// 					fmt.Println("connected to bootstrap node")
+		// 				}
+		// 			}
+		// 			fmt.Println("done with bootstrapping")
+
+		// 			// err = r.Bootstrap(ctx)
+		// 			// if err == nil {
+		// 			// err = <-r.ForceRefresh()
+		// 			// }
+		// 			return r, nil
+		// 		}),
+
 	)
 	check(err)
 	fmt.Println("\n\n\ncreated node!!!!!!!!!!!!\n\n\n")
@@ -109,15 +107,21 @@ func main() {
 
 	if len(os.Args) > 1 {
 
-		// 		fmt.Println(os.Args[1])
-		// 		addr, err := peer.AddrInfoFromString(os.Args[1])
-		// 		check(err)
-		// 		check(node.Connect(ctx, *addr))
-		// 		fmt.Println("successfully connected")
+		peerid, err := peer.Decode(os.Args[1])
+		if err == nil {
+			fmt.Println("got peer id")
+		} else {
+			addr, err := peer.AddrInfoFromString(os.Args[1])
+			check(err)
+			fmt.Println("got addrinfo")
+			check(node.Connect(ctx, *addr))
+			fmt.Println("successfully connected")
+			peerid = addr.ID
+		}
 
 		// stream, err := node.NewStream(ctx, addr.ID, echoProtocol)
-		peerid, err := peer.Decode(os.Args[1])
-		check(err)
+		// peerid, err := peer.Decode(os.Args[1])
+		// check(err)
 		stream, err := node.NewStream(ctx, peerid, echoProtocol)
 
 		check(err)
