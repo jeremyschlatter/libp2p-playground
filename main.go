@@ -30,13 +30,48 @@ func main() {
 	// 		check(err)
 	// 	}
 
+	// log.SetAllLoggers(log.LevelInfo)
+
+	// 	libp2p.SetDefaultServiceLimits(&rcmgr.InfiniteLimits)
+
+	// 	r, err := rcmgr.NewResourceManager(rcmgr.NewFixedLimiter(rcmgr.InfiniteLimits))
+	// 	check(err)
+
 	node, err := libp2p.New(
+		// libp2p.ResourceManager(r),
 		// libp2p.Peerstore(peers),
+		libp2p.NATPortMap(),
 		libp2p.Routing(func(node host.Host) (routing.PeerRouting, error) {
-			return dht.New(ctx, node)
+			r, err := dht.New(
+				ctx, node,
+				// dht.BootstrapPeers(dht.GetDefaultBootstrapPeerAddrInfos()...),
+			)
+			if err != nil {
+				return nil, err
+			}
+
+			if err := r.Bootstrap(ctx); err != nil {
+				return nil, err
+			}
+
+			for i, p := range dht.GetDefaultBootstrapPeerAddrInfos() {
+				if err := node.Connect(ctx, p); err != nil {
+					fmt.Printf("failed to connect to bootstrap node #%v\n", i)
+				} else {
+					fmt.Println("connected to bootstrap node")
+				}
+			}
+			fmt.Println("done with bootstrapping")
+
+			// err = r.Bootstrap(ctx)
+			// if err == nil {
+			// err = <-r.ForceRefresh()
+			// }
+			return r, nil
 		}),
 	)
 	check(err)
+	fmt.Println("\n\n\ncreated node!!!!!!!!!!!!\n\n\n")
 
 	node.SetStreamHandler(echoProtocol, func(s network.Stream) {
 		fmt.Println("received new stream")
@@ -74,14 +109,17 @@ func main() {
 
 	if len(os.Args) > 1 {
 
-		fmt.Println(os.Args[1])
+		// 		fmt.Println(os.Args[1])
+		// 		addr, err := peer.AddrInfoFromString(os.Args[1])
+		// 		check(err)
+		// 		check(node.Connect(ctx, *addr))
+		// 		fmt.Println("successfully connected")
 
-		addr, err := peer.AddrInfoFromString(os.Args[1])
+		// stream, err := node.NewStream(ctx, addr.ID, echoProtocol)
+		peerid, err := peer.Decode(os.Args[1])
 		check(err)
-		check(node.Connect(ctx, *addr))
-		fmt.Println("successfully connected")
+		stream, err := node.NewStream(ctx, peerid, echoProtocol)
 
-		stream, err := node.NewStream(ctx, addr.ID, echoProtocol)
 		check(err)
 		defer stream.Reset()
 		fmt.Println("successfully opened echo stream")
