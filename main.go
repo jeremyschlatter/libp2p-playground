@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 
@@ -10,9 +12,12 @@ import (
 
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/host"
+	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/routing"
 )
+
+const echoProtocol = "/echo/1.0.0"
 
 func main() {
 	ctx := context.Background()
@@ -32,6 +37,26 @@ func main() {
 		}),
 	)
 	check(err)
+
+	node.SetStreamHandler(echoProtocol, func(s network.Stream) {
+		fmt.Println("received new stream")
+		buf := bufio.NewReader(s)
+		err := func() error {
+			str, err := buf.ReadString('\n')
+			if err != nil {
+				return err
+			}
+			fmt.Println(str)
+			_, err = io.WriteString(s, str)
+			return err
+		}()
+		if err != nil {
+			fmt.Println(err)
+			s.Reset()
+		} else {
+			s.Close()
+		}
+	})
 
 	fmt.Println("my id:", node.ID())
 	fmt.Println("listen addresses:", node.Addrs())
@@ -54,7 +79,20 @@ func main() {
 		addr, err := peer.AddrInfoFromString(os.Args[1])
 		check(err)
 		check(node.Connect(ctx, *addr))
-		fmt.Println("successfully connected, exiting")
+		fmt.Println("successfully connected")
+
+		stream, err := node.NewStream(ctx, addr.ID, echoProtocol)
+		check(err)
+		defer stream.Reset()
+		fmt.Println("successfully opened echo stream")
+
+		_, err = io.WriteString(stream, "hello from sender\n")
+		check(err)
+
+		out, err := io.ReadAll(stream)
+		check(err)
+
+		fmt.Printf("reply: %s\n", out)
 
 	} else {
 
