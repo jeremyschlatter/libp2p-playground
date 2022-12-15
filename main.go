@@ -10,13 +10,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ipfs/go-log"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
 	ma "github.com/multiformats/go-multiaddr"
 
 	"github.com/libp2p/go-libp2p"
+	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/routing"
 	"github.com/libp2p/go-libp2p/p2p/host/autorelay"
 )
 
@@ -74,7 +75,7 @@ func main() {
 	// 		check(err)
 	// 	}
 
-	log.SetAllLoggers(log.LevelInfo)
+	// log.SetAllLoggers(log.LevelInfo)
 
 	// 	libp2p.SetDefaultServiceLimits(&rcmgr.InfiniteLimits)
 
@@ -99,35 +100,34 @@ func main() {
 		),
 		libp2p.ForceReachabilityPrivate(),
 
-		// libp2p.Routing(func(node host.Host) (routing.PeerRouting, error) {
-		// 	r, err := dht.New(
-		// 		ctx, node,
-		// 		// dht.BootstrapPeers(dht.GetDefaultBootstrapPeerAddrInfos()...),
-		// 	)
-		// 	if err != nil {
-		// 		return nil, err
-		// 	}
+		libp2p.Routing(func(node host.Host) (routing.PeerRouting, error) {
+			r, err := dht.New(
+				ctx, node,
+				// dht.BootstrapPeers(dht.GetDefaultBootstrapPeerAddrInfos()...),
+			)
+			if err != nil {
+				return nil, err
+			}
 
-		// 	if err := r.Bootstrap(ctx); err != nil {
-		// 		return nil, err
-		// 	}
+			if err := r.Bootstrap(ctx); err != nil {
+				return nil, err
+			}
 
-		// 	for i, p := range dht.GetDefaultBootstrapPeerAddrInfos() {
-		// 		if err := node.Connect(ctx, p); err != nil {
-		// 			fmt.Printf("failed to connect to bootstrap node #%v\n", i)
-		// 		} else {
-		// 			fmt.Println("connected to bootstrap node")
-		// 		}
-		// 	}
-		// 	fmt.Println("done with bootstrapping")
+			for i, p := range dht.GetDefaultBootstrapPeerAddrInfos() {
+				if err := node.Connect(ctx, p); err != nil {
+					fmt.Printf("failed to connect to bootstrap node #%v\n", i)
+				} else {
+					fmt.Println("connected to bootstrap node")
+				}
+			}
+			fmt.Println("done with bootstrapping")
 
-		// 	// err = r.Bootstrap(ctx)
-		// 	// if err == nil {
-		// 	// err = <-r.ForceRefresh()
-		// 	// }
-		// 	return r, nil
-		// }),
-
+			// err = r.Bootstrap(ctx)
+			// if err == nil {
+			// err = <-r.ForceRefresh()
+			// }
+			return r, nil
+		}),
 	)
 	check(err)
 	fmt.Println("\n\n\ncreated node\n\n\n")
