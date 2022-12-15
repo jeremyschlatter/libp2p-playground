@@ -8,6 +8,8 @@ import (
 	"os"
 	"os/signal"
 
+	dht "github.com/libp2p/go-libp2p-kad-dht"
+
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -36,40 +38,81 @@ func main() {
 	node, err := libp2p.New(
 		// libp2p.ResourceManager(r),
 		// libp2p.Peerstore(peers),
+
+		// 		libp2p.EnableAutoRelay(autorelay.WithPeerSource(
+		// 			func(ctx context.Context, numPeers int) <-chan peer.AddrInfo {
+		// 			},
+		// 			0,
+		// 		)),
+
 		libp2p.NATPortMap(),
 
-		// 		libp2p.Routing(func(node host.Host) (routing.PeerRouting, error) {
-		// 			r, err := dht.New(
-		// 				ctx, node,
-		// 				// dht.BootstrapPeers(dht.GetDefaultBootstrapPeerAddrInfos()...),
-		// 			)
-		// 			if err != nil {
-		// 				return nil, err
-		// 			}
+		// libp2p.Routing(func(node host.Host) (routing.PeerRouting, error) {
+		// 	r, err := dht.New(
+		// 		ctx, node,
+		// 		// dht.BootstrapPeers(dht.GetDefaultBootstrapPeerAddrInfos()...),
+		// 	)
+		// 	if err != nil {
+		// 		return nil, err
+		// 	}
 
-		// 			if err := r.Bootstrap(ctx); err != nil {
-		// 				return nil, err
-		// 			}
+		// 	if err := r.Bootstrap(ctx); err != nil {
+		// 		return nil, err
+		// 	}
 
-		// 			for i, p := range dht.GetDefaultBootstrapPeerAddrInfos() {
-		// 				if err := node.Connect(ctx, p); err != nil {
-		// 					fmt.Printf("failed to connect to bootstrap node #%v\n", i)
-		// 				} else {
-		// 					fmt.Println("connected to bootstrap node")
-		// 				}
-		// 			}
-		// 			fmt.Println("done with bootstrapping")
+		// 	for i, p := range dht.GetDefaultBootstrapPeerAddrInfos() {
+		// 		if err := node.Connect(ctx, p); err != nil {
+		// 			fmt.Printf("failed to connect to bootstrap node #%v\n", i)
+		// 		} else {
+		// 			fmt.Println("connected to bootstrap node")
+		// 		}
+		// 	}
+		// 	fmt.Println("done with bootstrapping")
 
-		// 			// err = r.Bootstrap(ctx)
-		// 			// if err == nil {
-		// 			// err = <-r.ForceRefresh()
-		// 			// }
-		// 			return r, nil
-		// 		}),
+		// 	// err = r.Bootstrap(ctx)
+		// 	// if err == nil {
+		// 	// err = <-r.ForceRefresh()
+		// 	// }
+		// 	return r, nil
+		// }),
 
 	)
 	check(err)
-	fmt.Println("\n\n\ncreated node!!!!!!!!!!!!\n\n\n")
+	fmt.Println("\n\n\ncreated node\n\n\n")
+
+	kad, err := dht.New(ctx, node)
+	check(err)
+	check(kad.Bootstrap(ctx))
+	for i, p := range dht.GetDefaultBootstrapPeerAddrInfos() {
+		if err := node.Connect(ctx, p); err != nil {
+			fmt.Printf("failed to connect to bootstrap node #%v\n", i)
+		} else {
+			fmt.Println("connected to bootstrap node")
+		}
+	}
+	fmt.Println("done with bootstrapping")
+	peers, err := kad.GetClosestPeers(ctx, node.ID().String())
+	check(err)
+	fmt.Println("peers:")
+	for _, p := range peers {
+		ps, err := node.Peerstore().SupportsProtocols(
+			p,
+			"/libp2p/circuit/relay/0.1.0",
+			"/libp2p/circuit/relay/0.2.0/stop",
+			"/libp2p/circuit/relay/0.2.0/hop",
+		)
+		check(err)
+		if len(ps) == 0 {
+			continue
+		}
+		b, err := peer.AddrInfo{
+			ID:    p,
+			Addrs: node.Peerstore().Addrs(p),
+		}.MarshalJSON()
+		check(err)
+		fmt.Println(string(b))
+	}
+	fmt.Println("/peers")
 
 	node.SetStreamHandler(echoProtocol, func(s network.Stream) {
 		fmt.Println("received new stream")
@@ -92,14 +135,15 @@ func main() {
 	})
 
 	fmt.Println("my id:", node.ID())
-	fmt.Println("listen addresses:", node.Addrs())
+	// fmt.Println("listen addresses:", node.Addrs())
 	{
 		addrs, err := peer.AddrInfoToP2pAddrs(&peer.AddrInfo{
 			ID:    node.ID(),
 			Addrs: node.Addrs(),
 		})
 		check(err)
-		fmt.Println("my multiaddrs?:", addrs)
+		_ = addrs
+		// fmt.Println("my multiaddrs?:", addrs)
 	}
 	// fmt.Printf("%v known peers\n", len(peers.Peers()))
 
