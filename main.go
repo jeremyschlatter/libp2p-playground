@@ -12,6 +12,7 @@ import (
 	dht "github.com/libp2p/go-libp2p-kad-dht"
 
 	"github.com/libp2p/go-libp2p"
+	"github.com/libp2p/go-libp2p/core/event"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -41,6 +42,57 @@ func main() {
 
 	nextPeer := make(chan peer.AddrInfo)
 
+	getDHT := func(node host.Host) (routing.PeerRouting, error) {
+		r, err := dht.New(ctx, node)
+		if err != nil {
+			return nil, err
+		}
+
+		if err := r.Bootstrap(ctx); err != nil {
+			return nil, err
+		}
+
+		for i, p := range dht.GetDefaultBootstrapPeerAddrInfos() {
+			if err := node.Connect(ctx, p); err != nil {
+				fmt.Printf("failed to connect to bootstrap node #%v\n", i)
+			} else {
+				fmt.Println("connected to bootstrap node")
+			}
+		}
+		fmt.Println("done with bootstrapping")
+
+		// use dht to get new peers for autorelay
+		if len(os.Args) == 1 {
+			fmt.Println("auto relaying")
+			go func() {
+				for {
+					peers, err := r.GetClosestPeers(ctx, node.ID().String())
+					if err != nil {
+						fmt.Println("GetClosestPeers error:", err)
+						time.Sleep(time.Second)
+						continue
+					}
+					for _, p := range peers {
+						addrs := node.Peerstore().Addrs(p)
+						if len(addrs) == 0 {
+							continue
+						}
+						nextPeer <- peer.AddrInfo{
+							ID:    p,
+							Addrs: addrs,
+						}
+					}
+				}
+			}()
+		}
+
+		// err = r.Bootstrap(ctx)
+		// if err == nil {
+		// err = <-r.ForceRefresh()
+		// }
+		return r, nil
+	}
+
 	node, err := libp2p.New(
 		// libp2p.ResourceManager(r),
 		// libp2p.Peerstore(peers),
@@ -52,6 +104,7 @@ func main() {
 		// 		)),
 
 		libp2p.NATPortMap(),
+		// libp2p.EnableHolePunching(),
 		libp2p.EnableAutoRelay(
 			// autorelay.WithCircuitV1Support(),
 			autorelay.WithBootDelay(0),
@@ -79,57 +132,7 @@ func main() {
 			),
 		),
 		libp2p.ForceReachabilityPrivate(),
-
-		libp2p.Routing(func(node host.Host) (routing.PeerRouting, error) {
-			r, err := dht.New(
-				ctx, node,
-				// dht.BootstrapPeers(dht.GetDefaultBootstrapPeerAddrInfos()...),
-			)
-			if err != nil {
-				return nil, err
-			}
-
-			if err := r.Bootstrap(ctx); err != nil {
-				return nil, err
-			}
-
-			for i, p := range dht.GetDefaultBootstrapPeerAddrInfos() {
-				if err := node.Connect(ctx, p); err != nil {
-					fmt.Printf("failed to connect to bootstrap node #%v\n", i)
-				} else {
-					fmt.Println("connected to bootstrap node")
-				}
-			}
-			fmt.Println("done with bootstrapping")
-
-			// use dht to get new peers for autorelay
-			go func() {
-				for {
-					peers, err := r.GetClosestPeers(ctx, node.ID().String())
-					if err != nil {
-						fmt.Println("GetClosestPeers error:", err)
-						time.Sleep(time.Second)
-						continue
-					}
-					for _, p := range peers {
-						addrs := node.Peerstore().Addrs(p)
-						if len(addrs) == 0 {
-							continue
-						}
-						nextPeer <- peer.AddrInfo{
-							ID:    p,
-							Addrs: addrs,
-						}
-					}
-				}
-			}()
-
-			// err = r.Bootstrap(ctx)
-			// if err == nil {
-			// err = <-r.ForceRefresh()
-			// }
-			return r, nil
-		}),
+		// libp2p.Routing(getDHT),
 	)
 	check(err)
 	fmt.Println("\n\n\ncreated node\n\n\n")
@@ -196,7 +199,25 @@ func main() {
 	// fmt.Println("listen addresses:", node.Addrs())
 
 	if len(os.Args) == 1 {
-		for i := 0; i < 10; i++ {
+
+		kad, err := getDHT(node)
+		check(err)
+		_ = kad
+
+		sub, err := node.EventBus().Subscribe(new(event.EvtLocalAddressesUpdated))
+		check(err)
+		defer sub.Close()
+		go func() {
+			for e := range sub.Out() {
+				e := e.(event.EvtLocalAddressesUpdated)
+				fmt.Println("new addresses:")
+				for _, a := range e.Current {
+					fmt.Printf("\t%v/p2p/%v\n", a.Address, node.ID())
+				}
+			}
+		}()
+
+		for i := 0; i < 1; i++ {
 			fmt.Println()
 			addrs, err := peer.AddrInfoToP2pAddrs(&peer.AddrInfo{
 				ID:    node.ID(),
@@ -208,14 +229,10 @@ func main() {
 			for _, a := range addrs {
 				fmt.Printf("\t%v\n", a)
 			}
-			fmt.Println("my listen addresses:")
-			for _, a := range node.Addrs() {
-				fmt.Printf("\t%v\n", a)
-			}
 			fmt.Println()
-			time.Sleep(2 * time.Second)
+			// time.Sleep(2 * time.Second)
 		}
-		fmt.Println("done looping")
+		// fmt.Println("done looping")
 	}
 	// fmt.Printf("%v known peers\n", len(peers.Peers()))
 
@@ -224,6 +241,20 @@ func main() {
 		peerid, err := peer.Decode(os.Args[1])
 		if err == nil {
 			fmt.Println("got peer id")
+			kad, err := getDHT(node)
+			check(err)
+			addr, err := kad.FindPeer(ctx, peerid)
+			if err != nil {
+				fmt.Printf("failed to find peer address: %v\n", err)
+				return
+			}
+			fmt.Println("got addrs:")
+			for _, a := range addr.Addrs {
+				fmt.Printf("\t%v\n", a)
+			}
+			check(node.Connect(ctx, addr))
+			fmt.Println("successfully connected")
+
 		} else {
 			addr, err := peer.AddrInfoFromString(os.Args[1])
 			check(err)
