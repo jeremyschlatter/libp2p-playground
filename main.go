@@ -43,7 +43,7 @@ func main() {
 	nextPeer := make(chan peer.AddrInfo)
 
 	getDHT := func(node host.Host) (routing.PeerRouting, error) {
-		r, err := dht.New(ctx, node)
+		r, err := dht.New(ctx, node, dht.Mode(dht.ModeClient))
 		if err != nil {
 			return nil, err
 		}
@@ -59,6 +59,17 @@ func main() {
 				fmt.Println("connected to bootstrap node")
 			}
 		}
+
+		// 		go func() {
+		// 			fmt.Println("refreshing DHT routing table...")
+		// 			err := <-r.RefreshRoutingTable()
+		// 			if err == nil {
+		// 				fmt.Println("refreshed DHT routing table")
+		// 			} else {
+		// 				fmt.Printf("failed to refresh DHT routing table: %v\n", err)
+		// 			}
+		// 		}()
+
 		fmt.Println("done with bootstrapping")
 
 		// use dht to get new peers for autorelay
@@ -243,6 +254,11 @@ func main() {
 			fmt.Println("got peer id")
 			kad, err := getDHT(node)
 			check(err)
+
+			// 			fmt.Println("refreshing dht routing table...")
+			// 			check(<-kad.(*dht.IpfsDHT).RefreshRoutingTable())
+
+			fmt.Println("looking up peer id...")
 			addr, err := kad.FindPeer(ctx, peerid)
 			if err != nil {
 				fmt.Printf("failed to find peer address: %v\n", err)
